@@ -68,7 +68,7 @@ def process_common_block(client: ModbusClient.ModbusTcpClient, start_address: in
     print(f"     Model:          [{model}]")
     print(f"     Options:        [{options}]")
     print(f"     Version:        [{version}]")
-    print(f"     Serial Number:  [{serial_number}]")
+#    print(f"     Serial Number:  [{serial_number}]") # Let's not share the serial numbers of inverters on a public forum....
     print(f"     Device Address: [{device_address}]")
 
 
