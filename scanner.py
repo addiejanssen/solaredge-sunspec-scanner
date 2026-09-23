@@ -2,9 +2,7 @@
 """
 Scan for SunSpec Map provided by SolarEdge inverters.
 
-usage: scanner.py <host> <port> --device-id <number>
-
-The --device-id is optional. It defaults to '1'.
+usage: scanner.py 
 """
 
 import argparse
@@ -19,14 +17,16 @@ def read_string_register(client: ModbusClient.ModbusTcpClient, address: int, dev
         rr: ModbusPDU = client.read_holding_registers(address=address, count=count, device_id=device_id)
     except ModbusException as exc:
         print(f"Received ModbusException({exc}) from library")
-        client.close()
         return -1,""
     if rr.isError():
         print(f"Received exception from device ({rr})")
-        client.close()
         return -1,""
 
-    converted_value = client.convert_from_registers(registers=rr.registers, data_type=client.DATATYPE.STRING)
+    try:
+        converted_value = client.convert_from_registers(registers=rr.registers, data_type=client.DATATYPE.STRING)
+    except Exception as exc:
+        print(f"Received Exception({exc}) while convert_from_registers")
+        return address+count,""
 
     if isinstance(converted_value, str):
         return address+count, converted_value
@@ -50,7 +50,7 @@ def read_int_register(client: ModbusClient.ModbusTcpClient, address: int, device
     converted_value = client.convert_from_registers(registers=rr.registers, data_type=client.DATATYPE.INT16)
 
     if isinstance(converted_value, int):
-        return address +1, int(converted_value)
+        return address+1, int(converted_value)
     else:
         return -1,-1
 
@@ -68,199 +68,256 @@ def process_common_block(client: ModbusClient.ModbusTcpClient, start_address: in
     print(f"     Model:          [{model}]")
     print(f"     Options:        [{options}]")
     print(f"     Version:        [{version}]")
-#    print(f"     Serial Number:  [{serial_number}]") # Let's not share the serial numbers of inverters on a public forum....
+#    print(f"     Serial Number:  [{serial_number}]")
+    print( "     Serial Number:  [hidden]")
     print(f"     Device Address: [{device_address}]")
 
 
 def read_block(client: ModbusClient.ModbusTcpClient, block_address: int, device_id: int) -> int:
 
     print()
-    print(f"   Reading Block at address [{block_address}] for device [{device_id}]")
+    print(f"   Reading Block at address [{block_address} ({hex(block_address)})] for device [{device_id}]")
 
     next_address, block_id = read_int_register(client=client, address=block_address, device_id=device_id)
     next_address, block_length = read_int_register(client=client, address=next_address, device_id=device_id)
 
+    print(f"    Block id     = [{block_id}]")
+    print(f"    Block length = [{block_length}]")
+
     match block_id:
         case -1:
-            print("    Block id = -1: The End of the block list has been reached")
+            print("    Block type   = [The End of the block list has been reached]")
             next_address = -1
         case 1:
-            print("    Block id = 1: Common")
+            print("    Block type   = [Common - All SunSpec compliant devices must include this as the first model]")
             process_common_block(client=client, start_address=next_address, device_id=device_id)
         case 2:
-            print("    Block id = 2: Basic Aggregator")
+            print("    Block type   = [Basic Aggregator - Aggregates a collection of models for a given model id]")
         case 3:
-            print("    Block id = 3: Secure Dataset Read Request")
+            print("    Block type   = [Secure Dataset Read Request - Request a digital signature over a specified set of data registers]")
         case 4:
-            print("    Block id = 4: Secure Dataset Read Response")
+            print("    Block type   = [Secure Dataset Read Response - Compute a digital signature over a specified set of data registers]")
         case 5:
-            print("    Block id = 5: Secure Write Request")
+            print("    Block type   = [Secure Write Request - Include a digital signature along with the control data]")
         case 6:
-            print("    Block id = 6: Secure Write Sequential Request")
+            print("    Block type   = [Secure Write Sequential Request - Include a digital signature along with the control data]")
         case 7:
-            print("    Block id = 7: Secure Write Response Model (DRAFT 1)")
+            print("    Block type   = [Secure Write Response Model (DRAFT 1) - Include a digital signature over the response]")
         case 8:
-            print("    Block id = 8: Get Device Security Certificate")
+            print("    Block type   = [Get Device Security Certificate - Security model for PKI]")
         case 9:
-            print("    Block id = 9: Set Operator Security Certificate")
+            print("    Block type   = [Set Operator Security Certificate - Security model for PKI]")
         case 10:
-            print("    Block id = 10: Communication Interface Header")
+            print("    Block type   = [Communication Interface Header - To be included first for a complete interface description]")
         case 11:
-            print("    Block id = 11: Ethernet Link Layer")
+            print("    Block type   = [Ethernet Link Layer - Include to support a wired ethernet port]")
         case 12:
-            print("    Block id = 12: IPv4")
+            print("    Block type   = [IPv4 - Include to support an IPv4 protocol stack on this interface]")
         case 13:
-            print("    Block id = 13: IPv6")
+            print("    Block type   = [IPv6 - Include to support an IPv6 protocol stack on this interface]")
         case 14:
-            print("    Block id = 14: Proxy Server")
+            print("    Block type   = [Proxy Server - Include this block to allow for a proxy server]")
         case 15:
-            print("    Block id = 15: Interface Counters Model")
+            print("    Block type   = [Interface Counters Model - Interface counters]")
         case 16:
-            print("    Block id = 16: Simple IP Network")
+            print("    Block type   = [Simple IP Network - Include this model for a simple IPv4 network stack]")
         case 17:
-            print("    Block id = 17: Serial Interface")
+            print("    Block type   = [Serial Interface - Include this model for serial interface configuration support]")
         case 18:
-            print("    Block id = 18: Cellular Link")
+            print("    Block type   = [Cellular Link - Include this model to support a cellular interface link]")
         case 19:
-            print("    Block id = 19: PPP Link")
+            print("    Block type   = [PPP Link - Include this model to configure a Point-to-Point Protocol link]")
         case 101:
-            print("    Block id = 101: Inverter (Single Phase)")
+            print("    Block type   = [Inverter (Single Phase) - Include this model for single phase inverter monitoring]")
         case 102:
-            print("    Block id = 102: Inverter (Split-Phase)")
+            print("    Block type   = [Inverter (Split-Phase) - Include this model for split phase inverter monitoring]")
         case 103:
-            print("    Block id = 103: Inverter (Three Phase)")
+            print("    Block type   = [Inverter (Three Phase) - Include this model for three phase inverter monitoring]")
         case 111:
-            print("    Block id = 111: Inverter (Single Phase) FLOAT")
+            print("    Block type   = [Inverter (Single Phase) FLOAT - Include this model for single phase inverter monitoring using float values]")
         case 112:
-            print("    Block id = 112: Inverter (Split Phase) FLOAT")
+            print("    Block type   = [Inverter (Split Phase) FLOAT - Include this model for split phase inverter monitoring using float values]")
         case 113:
-            print("    Block id = 113: Inverter (Three Phase) FLOAT")
+            print("    Block type   = [Inverter (Three Phase) FLOAT - Include this model for three phase inverter monitoring using float values]")
         case 120:
-            print("    Block id = 120: Nameplate")
+            print("    Block type   = [Nameplate - Inverter Controls Nameplate Ratings ]")
         case 121:
-            print("    Block id = 121: Basic Settings")
+            print("    Block type   = [Basic Settings - Inverter Controls Basic Settings ]")
         case 122:
-            print("    Block id = 122: Measurements_Status")
+            print("    Block type   = [Measurements_Status - Inverter Controls Extended Measurements and Status ]")
         case 123:
-            print("    Block id = 123: Immediate Controls")
+            print("    Block type   = [Immediate Controls - Immediate Inverter Controls ]")
         case 124:
-            print("    Block id = 124: Storage")
+            print("    Block type   = [Storage - Basic Storage Controls ]")
         case 125:
-            print("    Block id = 125: Pricing")
+            print("    Block type   = [Pricing - Pricing Signal  ]")
         case 126:
-            print("    Block id = 126: Static Volt-VAR")
+            print("    Block type   = [Static Volt-VAR - Static Volt-VAR Arrays ]")
         case 127:
-            print("    Block id = 127: Freq-Watt Param")
+            print("    Block type   = [Freq-Watt Param - Parameterized Frequency-Watt ]")
         case 128:
-            print("    Block id = 128: Dynamic Reactive Current")
+            print("    Block type   = [Dynamic Reactive Current - Dynamic Reactive Current ]")
         case 129:
-            print("    Block id = 129: LVRTD")
+            print("    Block type   = [LVRTD - LVRT Must Disconnect]")
         case 130:
-            print("    Block id = 130: HVRTD")
+            print("    Block type   = [HVRTD - HVRT Must Disconnect]")
         case 131:
-            print("    Block id = 131: Watt-PF")
+            print("    Block type   = [Watt-PF - Watt-Power Factor ]")
         case 132:
-            print("    Block id = 132: Volt-Watt")
+            print("    Block type   = [Volt-Watt - Volt-Watt ]")
         case 133:
-            print("    Block id = 133: Basic Scheduling")
+            print("    Block type   = [Basic Scheduling - Basic Scheduling ]")
         case 134:
-            print("    Block id = 134: Freq-Watt Crv")
+            print("    Block type   = [Freq-Watt Crv - Curve-Based Frequency-Watt ]")
         case 135:
-            print("    Block id = 135: LFRT")
+            print("    Block type   = [LFRT - Low Frequency Ride-through]")
         case 136:
-            print("    Block id = 136: HFRT")
+            print("    Block type   = [HFRT - High Frequency Ride-through]")
         case 137:
-            print("    Block id = 137: LVRTC")
+            print("    Block type   = [LVRTC - LVRT must remain connected]")
         case 138:
-            print("    Block id = 138: HVRTC")
+            print("    Block type   = [HVRTC - HVRT must remain connected]")
         case 139:
-            print("    Block id = 139: LVRTX")
+            print("    Block type   = [LVRTX - LVRT extended curve]")
         case 140:
-            print("    Block id = 140: HVRTX")
+            print("    Block type   = [HVRTX - HVRT extended curve]")
         case 141:
-            print("    Block id = 141: LFRTC")
+            print("    Block type   = [LFRTC - LFRT must remain connected]")
         case 142:
-            print("    Block id = 142: HFRTC")
+            print("    Block type   = [HFRTC - HFRT must remain connected]")
         case 143:
-            print("    Block id = 143: LFRTX")
+            print("    Block type   = [LFRTX - LFRT extended curve]")
         case 144:
-            print("    Block id = 144: HFRTX")
+            print("    Block type   = [HFRTX - HFRT extended curve]")
         case 145:
-            print("    Block id = 145: Extended Settings")
+            print("    Block type   = [Extended Settings - Inverter controls extended settings ]")
         case 160:
-            print("    Block id = 160: Multiple MPPT Inverter Extension Model")
+            print("    Block type   = [Multiple MPPT Inverter Extension Model]")
         case 201:
-            print("    Block id = 201: Meter (Single Phase)single phase (AN or AB) meter")
+            print("    Block type   = [Meter (Single Phase) single phase (AN or AB) meter - Include this model for single phase (AN or AB) metering]")
         case 202:
-            print("    Block id = 202: split single phase (ABN) meter")
+            print("    Block type   = [split single phase (ABN) meter]")
         case 203:
-            print("    Block id = 203: wye-connect three phase (abcn) meter")
+            print("    Block type   = [wye-connect three phase (abcn) meter]")
         case 204:
-            print("    Block id = 204: delta-connect three phase (abc) meter")
+            print("    Block type   = [delta-connect three phase (abc) meter]")
         case 211:
-            print("    Block id = 211: single phase (AN or AB) meter")
+            print("    Block type   = [single phase (AN or AB) meter]")
         case 212:
-            print("    Block id = 212: split single phase (ABN) meter")
+            print("    Block type   = [split single phase (ABN) meter]")
         case 213:
-            print("    Block id = 213: wye-connect three phase (abcn) meter")
+            print("    Block type   = [wye-connect three phase (abcn) meter]")
         case 214:
-            print("    Block id = 214: delta-connect three phase (abc) meter")
+            print("    Block type   = [delta-connect three phase (abc) meter]")
         case 220:
-            print("    Block id = 220: Secure AC Meter Selected Readings")
+            print("    Block type   = [Secure AC Meter Selected Readings - Include this model for secure metering]")
         case 302:
-            print("    Block id = 302: Irradiance Model")
+            print("    Block type   = [Irradiance Model - Include to support various irradiance measurements]")
         case 303:
-            print("    Block id = 303: Back of Module Temperature Model")
+            print("    Block type   = [Back of Module Temperature Model - Include to support variable number of  back of module temperature measurements]")
         case 304:
-            print("    Block id = 304: Inclinometer Model")
+            print("    Block type   = [Inclinometer Model - Include to support orientation measurements]")
         case 305:
-            print("    Block id = 305: GPS")
+            print("    Block type   = [GPS - Include to support location measurements]")
         case 306:
-            print("    Block id = 306: Reference Point Model")
+            print("    Block type   = [Reference Point Model - Include to support a standard reference point]")
         case 307:
-            print("    Block id = 307: Base Met")
+            print("    Block type   = [Base Met - Base Meteorological Model]")
         case 308:
-            print("    Block id = 308: Mini Met Model")
+            print("    Block type   = [Mini Met Model - Include to support a few basic measurements]")
         case 401:
-            print("    Block id = 401: String Combiner (Current)")
+            print("    Block type   = [String Combiner (Current) - A basic string combiner]")
         case 402:
-            print("    Block id = 402: String Combiner (Advanced)")
+            print("    Block type   = [String Combiner (Advanced) - An advanced string combiner]")
         case 403:
-            print("    Block id = 403: String Combiner (Current)")
+            print("    Block type   = [String Combiner (Current) - A basic string combiner model]")
         case 404:
-            print("    Block id = 404: String Combiner (Advanced)")
+            print("    Block type   = [String Combiner (Advanced) - An advanced string combiner including voltage and energy measurements]")
         case 501:
-            print("    Block id = 501: Solar Module")
+            print("    Block type   = [Solar Module - A solar module model supporting DC-DC converter]")
         case 502:
-            print("    Block id = 502: Solar Module")
+            print("    Block type   = [Solar Module - A solar module model supporting DC-DC converter]")
         case 601:
-            print("    Block id = 601: Tracker Controller DRAFT 2")
+            print("    Block type   = [Tracker Controller DRAFT 2 - Monitors and controls multiple trackers]")
+        case 701:
+            print("    Block type   = [DER AC Measurement - DER AC measurement model.]")
+        case 702:
+            print("    Block type   = [DER Capacity - DER capacity model.]")
+        case 703:
+            print("    Block type   = [Enter Service - Enter service model.]")
+        case 704:
+            print("    Block type   = [DER AC Controls - DER AC controls model.]")
+        case 705:
+            print("    Block type   = [DER Volt-Var - DER Volt-Var model.]")
+        case 706:
+            print("    Block type   = [DER Volt-Watt - DER Volt-Watt model.]")
+        case 707:
+            print("    Block type   = [DER Trip LV - DER low voltage trip model.]")
+        case 708:
+            print("    Block type   = [DER Trip HV - DER high voltage trip model.]")
+        case 709:
+            print("    Block type   = [DER Trip LF - DER low frequency trip model.]")
+        case 710:
+            print("    Block type   = [DER Trip HF - DER high frequency trip model.]")
+        case 711:
+            print("    Block type   = [DER Frequency Droop - DER Frequency Droop model.]")
+        case 712:
+            print("    Block type   = [DER Watt-Var - DER Watt-Var model.]")
+        case 713:
+            print("    Block type   = [DER Storage Capacity - DER storage capacity.]")
+        case 714:
+            print("    Block type   = [DER DC Measurement - DER DC measurement.]")
+        case 715:
+            print("    Block type   = [DERCtl - DER Control]")
         case 801:
-            print("    Block id = 801: Energy Storage Base Model (DEPRECATED)")
+            print("    Block type   = [Energy Storage Base Model (DEPRECATED) - This model has been deprecated.]")
         case 802:
-            print("    Block id = 802: Battery Base Model")
+            print("    Block type   = [Battery Base Model]")
         case 803:
-            print("    Block id = 803: Lithium-Ion Battery Bank Model")
+            print("    Block type   = [Lithium-Ion Battery Bank Model]")
         case 804:
-            print("    Block id = 804: Lithium-Ion String Model")
+            print("    Block type   = [Lithium-Ion String Model]")
         case 805:
-            print("    Block id = 805: Lithium-Ion Module Model")
+            print("    Block type   = [Lithium-Ion Module Model]")
         case 806:
-            print("    Block id = 806: Flow Battery Model")
+            print("    Block type   = [Flow Battery Model]")
         case 807:
-            print("    Block id = 807: Flow Battery String Model")
+            print("    Block type   = [Flow Battery String Model]")
         case 808:
-            print("    Block id = 808: Flow Battery Module Model")
+            print("    Block type   = [Flow Battery Module Model]")
         case 809:
-            print("    Block id = 809: Flow Battery Stack Model")
+            print("    Block type   = [Flow Battery Stack Model]")
         case _:
-            print(f"    Block id = {block_id}: Unknown block")
-            next_address = -1
+            print("    Block type   = [Unknown]")
 
-    if next_address > 0:
+    if next_address >= 0 and block_length > 0:
         return next_address + block_length
     else:
         return -1
+
+
+
+def read_battery(client: ModbusClient.ModbusTcpClient, address: int, device_id: int) -> None:
+
+    print()
+    print(f"   Reading Battery at address [{address} ({hex(address)})] for device [{device_id}]")
+
+    next_address, manufacturer = read_string_register(client=client, address=address, device_id=device_id, count=16)
+    next_address, model = read_string_register(client=client, address=next_address, device_id=device_id, count=16)
+    next_address, firmware_version = read_string_register(client=client, address=next_address, device_id=device_id, count=16)
+    next_address, serial_number = read_string_register(client=client, address=next_address, device_id=device_id, count=16)
+    next_address, battery_device_id = read_int_register(client=client, address=next_address, device_id=device_id)
+    next_address, battery_reserved = read_int_register(client=client, address=next_address, device_id=device_id)
+
+    print(f"     Manufacturer:     [{manufacturer}]")
+    print(f"     Model:            [{model}]")
+    print(f"     Firmware Version: [{firmware_version}]")
+    print(f"     Serial Number:    [{serial_number}]")
+#    print( "     Serial Number:    [hidden]")
+    print(f"     Device id:        [{battery_device_id}]")
+    print(f"     Reserved:         [{battery_reserved}]")
+    print(f"     Next Address:     [{next_address} ({hex(next_address)})]")
+
 
 if __name__ == "__main__":
 
@@ -284,10 +341,20 @@ if __name__ == "__main__":
 
             while block_address > 0 and client.connected:
                 block_address = read_block(client=client, block_address=block_address, device_id=args.device_id)
+
+            print()
+            print("  End of Sunspec MAP")
         else:
             print("  The inverter is NOT providing a SunSpec Map")
 
+        print()
+        print("  Trying to probe for batteries")
+        read_battery(client=client, address=57600, device_id=args.device_id)
+        read_battery(client=client, address=57856, device_id=args.device_id)
+
+    print()
     if client.connected:
         client.close()
-        print()
-        print("Closed connection to server")
+        print("Disconnected from server")
+    else:
+        print("Already disconnected from server")
